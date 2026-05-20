@@ -16,6 +16,7 @@ TERRAFORM_DIR="${TERRAFORM_DIR:-infra}"
 TERRAFORM_AUTO_APPROVE="true"
 DRY_RUN="false"
 CODECONNECTIONS_CONNECTION_ARN="${CODECONNECTIONS_CONNECTION_ARN:-${CODESTAR_CONNECTION_ARN:-}}"
+ROUTE53_ZONE_ID="${ROUTE53_ZONE_ID:-}"
 TERRAFORM_DEPLOY_ONLY="${TERRAFORM_DEPLOY_ONLY:-false}"
 TF_VAR_FILES=()
 TF_EXTRA_ARGS=()
@@ -33,6 +34,7 @@ Options:
                               AWS CodeConnections ARN for full pipeline terraform apply
   --codestar-connection-arn <arn>
                               Deprecated alias for --codeconnections-connection-arn
+  --route53-zone-id <id>      Route53 hosted zone ID for ACM validation and DNS aliases
   --terraform-deploy-only    Apply only deploy-bucket resources (skips pipeline resources)
   --terraform-dir <path>     Terraform directory relative to repo root (default: infra)
   --tf-var-file <path>       Terraform var-file (repeatable)
@@ -51,7 +53,7 @@ Environment variables:
   DEPLOY_BUCKET, S3_BUCKET, AWS_REGION, WEBSITE_DIR, BUILD_DIR,
   CLOUDFRONT_DISTRIBUTION_ID, TERRAFORM_DIR, CODECONNECTIONS_CONNECTION_ARN,
   CODESTAR_CONNECTION_ARN,
-  TERRAFORM_DEPLOY_ONLY, SKIP_BUILD, DRY_RUN
+  ROUTE53_ZONE_ID, TERRAFORM_DEPLOY_ONLY, SKIP_BUILD, DRY_RUN
 EOF
 }
 
@@ -90,6 +92,9 @@ run_terraform() {
   tf_args+=("-var" "aws_region=${AWS_REGION}")
   tf_args+=("-var" "website_directory=${WEBSITE_DIR}")
   tf_args+=("-var" "build_output_directory=${BUILD_DIR}")
+  if [[ -n "${ROUTE53_ZONE_ID}" ]]; then
+    tf_args+=("-var" "route53_zone_id=${ROUTE53_ZONE_ID}")
+  fi
 
   if [[ "${TERRAFORM_DEPLOY_ONLY}" == "true" ]]; then
     tf_args+=("-var" "codeconnections_connection_arn=arn:aws:codestar-connections:${AWS_REGION}:000000000000:connection/placeholder")
@@ -164,6 +169,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --codestar-connection-arn)
       CODECONNECTIONS_CONNECTION_ARN="$2"
+      shift 2
+      ;;
+    --route53-zone-id)
+      ROUTE53_ZONE_ID="$2"
       shift 2
       ;;
     --terraform-deploy-only)

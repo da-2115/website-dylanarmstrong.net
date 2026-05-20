@@ -35,3 +35,18 @@ output "cloudfront_distribution_domain_name" {
   description = "Domain name of the Terraform-managed CloudFront distribution"
   value       = try(aws_cloudfront_distribution.website[0].domain_name, null)
 }
+
+output "website_primary_domain_name" {
+  description = "Primary custom domain served by CloudFront"
+  value       = var.primary_domain_name
+}
+
+output "website_www_domain_name" {
+  description = "WWW custom domain served by CloudFront"
+  value       = var.www_domain_name
+}
+
+output "acm_certificate_arn" {
+  description = "ACM certificate ARN used by CloudFront"
+  value       = try(aws_acm_certificate_validation.website[0].certificate_arn, null)
+}

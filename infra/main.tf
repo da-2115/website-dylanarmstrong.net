@@ -5,6 +5,11 @@ provider "aws" {
   region = var.aws_region
 }
 
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -14,6 +19,7 @@ locals {
   effective_connection_arn             = coalesce(var.codeconnections_connection_arn, var.codestar_connection_arn, "arn:aws:codestar-connections:${var.aws_region}:000000000000:connection/placeholder")
   deploy_bucket_regional_domain_name   = var.create_deploy_bucket ? aws_s3_bucket.deploy_bucket[0].bucket_regional_domain_name : data.aws_s3_bucket.deploy_bucket_existing[0].bucket_regional_domain_name
   effective_cloudfront_distribution_id = try(aws_cloudfront_distribution.website[0].id, coalesce(var.cloudfront_distribution_id, ""))
+  custom_domain_names                  = [var.primary_domain_name, var.www_domain_name]
   common_tags = merge(
     {
       Project     = var.project_name
@@ -58,6 +64,44 @@ resource "aws_s3_bucket_public_access_block" "deploy_bucket" {
   restrict_public_buckets = true
 }
 
+resource "aws_acm_certificate" "website" {
+  provider                  = aws.us_east_1
+  count                     = var.create_cloudfront_distribution ? 1 : 0
+  domain_name               = var.primary_domain_name
+  subject_alternative_names = [var.www_domain_name]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_route53_record" "website_certificate_validation" {
+  for_each = var.create_cloudfront_distribution ? {
+    for dvo in aws_acm_certificate.website[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      record = dvo.resource_record_value
+    }
+  } : {}
+
+  zone_id         = var.route53_zone_id
+  name            = each.value.name
+  type            = each.value.type
+  ttl             = 60
+  records         = [each.value.record]
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "website" {
+  provider                = aws.us_east_1
+  count                   = var.create_cloudfront_distribution ? 1 : 0
+  certificate_arn         = aws_acm_certificate.website[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.website_certificate_validation : record.fqdn]
+}
+
 resource "aws_cloudfront_origin_access_control" "website" {
   count                             = var.create_cloudfront_distribution ? 1 : 0
   name                              = "${var.project_name}-oac"
@@ -74,6 +118,7 @@ resource "aws_cloudfront_distribution" "website" {
   comment             = "${var.project_name} website"
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
+  aliases             = local.custom_domain_names
 
   origin {
     domain_name              = local.deploy_bucket_regional_domain_name
@@ -122,7 +167,9 @@ resource "aws_cloudfront_distribution" "website" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.website[0].certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   tags = local.common_tags
@@ -155,6 +202,58 @@ resource "aws_s3_bucket_policy" "deploy_bucket_cloudfront_read" {
   count  = var.create_cloudfront_distribution ? 1 : 0
   bucket = local.deploy_bucket_name
   policy = data.aws_iam_policy_document.deploy_bucket_cloudfront_read[0].json
+}
+
+resource "aws_route53_record" "website_apex_a" {
+  count   = var.create_cloudfront_distribution ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.primary_domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website[0].domain_name
+    zone_id                = aws_cloudfront_distribution.website[0].hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website_apex_aaaa" {
+  count   = var.create_cloudfront_distribution ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.primary_domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website[0].domain_name
+    zone_id                = aws_cloudfront_distribution.website[0].hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website_www_a" {
+  count   = var.create_cloudfront_distribution ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.www_domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website[0].domain_name
+    zone_id                = aws_cloudfront_distribution.website[0].hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website_www_aaaa" {
+  count   = var.create_cloudfront_distribution ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.www_domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website[0].domain_name
+    zone_id                = aws_cloudfront_distribution.website[0].hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 resource "aws_s3_bucket_versioning" "pipeline_artifacts" {

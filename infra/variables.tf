@@ -73,6 +73,29 @@ variable "create_cloudfront_distribution" {
   default     = true
 }
 
+variable "primary_domain_name" {
+  description = "Primary custom domain served by CloudFront"
+  type        = string
+  default     = "dylanarmstrong.net"
+}
+
+variable "www_domain_name" {
+  description = "WWW subdomain served by CloudFront"
+  type        = string
+  default     = "www.dylanarmstrong.net"
+}
+
+variable "route53_zone_id" {
+  description = "Route53 hosted zone ID used for ACM validation and alias records"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = !var.create_cloudfront_distribution || var.route53_zone_id != null
+    error_message = "route53_zone_id is required when create_cloudfront_distribution is true."
+  }
+}
+
 variable "tags" {
   description = "Additional tags to apply to created resources"
   type        = map(string)
