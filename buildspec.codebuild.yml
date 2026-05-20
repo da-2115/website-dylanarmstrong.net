@@ -1,0 +1,47 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - cd "$CODEBUILD_SRC_DIR/$WEBSITE_DIR"
+      - |
+        if [ -f package-lock.json ]; then
+          npm ci
+        elif [ -f yarn.lock ]; then
+          corepack enable
+          yarn install --frozen-lockfile
+        elif [ -f pnpm-lock.yaml ]; then
+          corepack enable
+          pnpm install --frozen-lockfile
+        else
+          npm install
+        fi
+  build:
+    commands:
+      - cd "$CODEBUILD_SRC_DIR/$WEBSITE_DIR"
+      - |
+        if [ -f package-lock.json ]; then
+          npm run build
+        elif [ -f yarn.lock ]; then
+          yarn build
+        elif [ -f pnpm-lock.yaml ]; then
+          pnpm build
+        else
+          npm run build
+        fi
+  post_build:
+    commands:
+      - cd "$CODEBUILD_SRC_DIR/$WEBSITE_DIR"
+      - '[ -d "$BUILD_DIR" ] || (echo "Build output directory not found: $BUILD_DIR" && exit 1)'
+      - aws s3 sync "$BUILD_DIR" "s3://$DEPLOY_BUCKET" --delete
+      - |
+        if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+          aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+        fi
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: "$WEBSITE_DIR/$BUILD_DIR"
