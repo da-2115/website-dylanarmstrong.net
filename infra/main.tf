@@ -9,9 +9,10 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  artifact_bucket_name = "${var.project_name}-pipeline-artifacts-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
-  deploy_bucket_name   = coalesce(var.deploy_bucket_name, "${var.project_name}-site-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}")
-  deploy_bucket_regional_domain_name = var.create_deploy_bucket ? aws_s3_bucket.deploy_bucket[0].bucket_regional_domain_name : data.aws_s3_bucket.deploy_bucket_existing[0].bucket_regional_domain_name
+  artifact_bucket_name                 = "${substr(var.project_name, 0, 18)}-pa-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
+  deploy_bucket_name                   = coalesce(var.deploy_bucket_name, "${var.project_name}-site-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}")
+  effective_connection_arn             = coalesce(var.codeconnections_connection_arn, var.codestar_connection_arn, "arn:aws:codestar-connections:${var.aws_region}:000000000000:connection/placeholder")
+  deploy_bucket_regional_domain_name   = var.create_deploy_bucket ? aws_s3_bucket.deploy_bucket[0].bucket_regional_domain_name : data.aws_s3_bucket.deploy_bucket_existing[0].bucket_regional_domain_name
   effective_cloudfront_distribution_id = try(aws_cloudfront_distribution.website[0].id, coalesce(var.cloudfront_distribution_id, ""))
   common_tags = merge(
     {
@@ -67,10 +68,10 @@ resource "aws_cloudfront_origin_access_control" "website" {
 }
 
 resource "aws_cloudfront_distribution" "website" {
-  count           = var.create_cloudfront_distribution ? 1 : 0
-  enabled         = true
-  is_ipv6_enabled = true
-  comment         = "${var.project_name} website"
+  count               = var.create_cloudfront_distribution ? 1 : 0
+  enabled             = true
+  is_ipv6_enabled     = true
+  comment             = "${var.project_name} website"
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
 
@@ -139,7 +140,7 @@ data "aws_iam_policy_document" "deploy_bucket_cloudfront_read" {
       identifiers = ["cloudfront.amazonaws.com"]
     }
 
-    actions = ["s3:GetObject"]
+    actions   = ["s3:GetObject"]
     resources = ["arn:aws:s3:::${local.deploy_bucket_name}/*"]
 
     condition {
@@ -291,7 +292,7 @@ data "aws_iam_policy_document" "codepipeline_policy" {
       "codestar-connections:UseConnection",
       "codeconnections:UseConnection"
     ]
-    resources = [var.codestar_connection_arn]
+    resources = [local.effective_connection_arn]
   }
 }
 
@@ -372,7 +373,7 @@ resource "aws_codepipeline" "website_pipeline" {
       output_artifacts = ["SourceOutput"]
 
       configuration = {
-        ConnectionArn    = var.codestar_connection_arn
+        ConnectionArn    = local.effective_connection_arn
         FullRepositoryId = var.github_full_repository
         BranchName       = var.github_branch
         DetectChanges    = "true"

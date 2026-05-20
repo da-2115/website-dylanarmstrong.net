@@ -15,7 +15,7 @@ SKIP_DEPLOY="false"
 TERRAFORM_DIR="${TERRAFORM_DIR:-infra}"
 TERRAFORM_AUTO_APPROVE="true"
 DRY_RUN="false"
-CODESTAR_CONNECTION_ARN="${CODESTAR_CONNECTION_ARN:-}"
+CODECONNECTIONS_CONNECTION_ARN="${CODECONNECTIONS_CONNECTION_ARN:-${CODESTAR_CONNECTION_ARN:-}}"
 TERRAFORM_DEPLOY_ONLY="${TERRAFORM_DEPLOY_ONLY:-false}"
 TF_VAR_FILES=()
 TF_EXTRA_ARGS=()
@@ -29,8 +29,10 @@ Run Terraform, build a static website, and deploy it to S3.
 Options:
   --bucket <name>            S3 bucket name (optional if Terraform output is available)
   --region <region>          AWS region (default: ap-southeast-2)
+  --codeconnections-connection-arn <arn>
+                              AWS CodeConnections ARN for full pipeline terraform apply
   --codestar-connection-arn <arn>
-                              CodeStar connection ARN for full pipeline terraform apply
+                              Deprecated alias for --codeconnections-connection-arn
   --terraform-deploy-only    Apply only deploy-bucket resources (skips pipeline resources)
   --terraform-dir <path>     Terraform directory relative to repo root (default: infra)
   --tf-var-file <path>       Terraform var-file (repeatable)
@@ -47,7 +49,8 @@ Options:
 
 Environment variables:
   DEPLOY_BUCKET, S3_BUCKET, AWS_REGION, WEBSITE_DIR, BUILD_DIR,
-  CLOUDFRONT_DISTRIBUTION_ID, TERRAFORM_DIR, CODESTAR_CONNECTION_ARN,
+  CLOUDFRONT_DISTRIBUTION_ID, TERRAFORM_DIR, CODECONNECTIONS_CONNECTION_ARN,
+  CODESTAR_CONNECTION_ARN,
   TERRAFORM_DEPLOY_ONLY, SKIP_BUILD, DRY_RUN
 EOF
 }
@@ -89,18 +92,18 @@ run_terraform() {
   tf_args+=("-var" "build_output_directory=${BUILD_DIR}")
 
   if [[ "${TERRAFORM_DEPLOY_ONLY}" == "true" ]]; then
-    tf_args+=("-var" "codestar_connection_arn=arn:aws:codestar-connections:${AWS_REGION}:000000000000:connection/placeholder")
+    tf_args+=("-var" "codeconnections_connection_arn=arn:aws:codestar-connections:${AWS_REGION}:000000000000:connection/placeholder")
     tf_args+=("-target=aws_s3_bucket.deploy_bucket")
     tf_args+=("-target=aws_s3_bucket_versioning.deploy_bucket")
     tf_args+=("-target=aws_s3_bucket_public_access_block.deploy_bucket")
     tf_args+=("-target=aws_s3_bucket_policy.deploy_bucket_cloudfront_read")
     tf_args+=("-target=aws_cloudfront_origin_access_control.website")
     tf_args+=("-target=aws_cloudfront_distribution.website")
-  elif [[ -n "${CODESTAR_CONNECTION_ARN}" ]]; then
-    tf_args+=("-var" "codestar_connection_arn=${CODESTAR_CONNECTION_ARN}")
+  elif [[ -n "${CODECONNECTIONS_CONNECTION_ARN}" ]]; then
+    tf_args+=("-var" "codeconnections_connection_arn=${CODECONNECTIONS_CONNECTION_ARN}")
   else
-    echo "Error: CODESTAR_CONNECTION_ARN is required for full Terraform apply." >&2
-    echo "Set --codestar-connection-arn (or CODESTAR_CONNECTION_ARN), or use --terraform-deploy-only." >&2
+    echo "Error: CODECONNECTIONS_CONNECTION_ARN is required for full Terraform apply." >&2
+    echo "Set --codeconnections-connection-arn (or CODECONNECTIONS_CONNECTION_ARN), or use --terraform-deploy-only." >&2
     exit 1
   fi
 
@@ -121,7 +124,7 @@ run_terraform() {
     tf_plan_args=("${tf_args[@]}")
     if [[ "${TERRAFORM_DEPLOY_ONLY}" == "true" ]]; then
       echo "Running terraform plan for deploy resources only (dry run)"
-    elif [[ -n "${CODESTAR_CONNECTION_ARN}" ]]; then
+    elif [[ -n "${CODECONNECTIONS_CONNECTION_ARN}" ]]; then
       echo "Running terraform plan (dry run)"
     else
       echo "Running terraform plan (dry run)"
@@ -137,7 +140,7 @@ run_terraform() {
 
   if [[ "${TERRAFORM_DEPLOY_ONLY}" == "true" ]]; then
     echo "Applying Terraform for deploy resources only"
-  elif [[ -n "${CODESTAR_CONNECTION_ARN}" ]]; then
+  elif [[ -n "${CODECONNECTIONS_CONNECTION_ARN}" ]]; then
     echo "Applying full Terraform configuration"
   else
     echo "Applying full Terraform configuration"
@@ -155,8 +158,12 @@ while [[ $# -gt 0 ]]; do
       AWS_REGION="$2"
       shift 2
       ;;
+    --codeconnections-connection-arn)
+      CODECONNECTIONS_CONNECTION_ARN="$2"
+      shift 2
+      ;;
     --codestar-connection-arn)
-      CODESTAR_CONNECTION_ARN="$2"
+      CODECONNECTIONS_CONNECTION_ARN="$2"
       shift 2
       ;;
     --terraform-deploy-only)

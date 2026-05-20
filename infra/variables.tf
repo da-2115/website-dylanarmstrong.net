@@ -16,7 +16,7 @@ variable "project_name" {
 variable "github_full_repository" {
   description = "GitHub repository in owner/repo format"
   type        = string
-  default     = "https://github.com/da-2115/website-dylanarmstrong.net.git"
+  default     = "da-2115/website-dylanarmstrong.net"
 }
 
 variable "github_branch" {
@@ -25,9 +25,16 @@ variable "github_branch" {
   default     = "main"
 }
 
-variable "codestar_connection_arn" {
-  description = "Existing CodeStar connection ARN used by CodePipeline source stage"
+variable "codeconnections_connection_arn" {
+  description = "AWS CodeConnections connection ARN used by CodePipeline source stage"
   type        = string
+  default     = null
+}
+
+variable "codestar_connection_arn" {
+  description = "Deprecated alias for codeconnections_connection_arn (kept for backward compatibility)"
+  type        = string
+  default     = null
 }
 
 variable "deploy_bucket_name" {
