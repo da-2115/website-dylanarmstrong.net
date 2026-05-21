@@ -222,7 +222,7 @@ function scrollToSection(id) {
 
     <footer class="mt-7 border-t border-white/10 bg-[#060a19]">
       <div class="mx-auto flex min-h-10 w-full max-w-6xl items-center justify-center px-5 text-sm text-slate-300 md:px-8">
-        <span>© 2026 Dylan Armstrong.</span>
+        <span>© {{ new Date().getFullYear() }} Dylan Armstrong.</span>
       </div>
     </footer>
   </div>
